@@ -1,5 +1,12 @@
-import { App, Modal, Notice, Plugin, PluginSettingTab, Setting } from 'obsidian';
+import * as CodeMirror from 'codemirror';
+import { App, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting, CachedMetadata, FileSystemAdapter } from 'obsidian';
+import {readdirSync, statSync} from "fs";
+import * as path from 'path';
 
+type GetSettings = (
+	data: CachedMetadata,
+	cursor: CodeMirror.Position
+) => MyPluginSettings;
 interface MyPluginSettings {
 	mySetting: string;
 }
@@ -9,18 +16,12 @@ const DEFAULT_SETTINGS: MyPluginSettings = {
 }
 
 export default class MyPlugin extends Plugin {
-	settings: MyPluginSettings;
+	public settings: MyPluginSettings = DEFAULT_SETTINGS;
 
 	async onload() {
 		console.log('loading plugin');
 
 		await this.loadSettings();
-
-		this.addRibbonIcon('dice', 'Sample Plugin', () => {
-			new Notice('This is a notice!');
-		});
-
-		this.addStatusBarItem().setText('Status Bar Text');
 
 		this.addCommand({
 			id: 'open-sample-modal',
@@ -40,17 +41,66 @@ export default class MyPlugin extends Plugin {
 			}
 		});
 
+		// コマンド
+		this.addCommand({
+			id: 'add-toc-notes',
+			name: 'Add Sample TOC Notes',
+			callback: this.createTocForActiveFile(),
+		});
+
+		// 設定内容
 		this.addSettingTab(new SampleSettingTab(this.app, this));
+	}
 
-		this.registerCodeMirror((cm: CodeMirror.Editor) => {
-			console.log('codemirror', cm);
-		});
+	private createTocForActiveFile = (
+		settings: MyPluginSettings | GetSettings = this.settings
+  ) => () => {
+    const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
 
-		this.registerDomEvent(document, 'click', (evt: MouseEvent) => {
-			console.log('click', evt);
-		});
+    if (activeView && activeView.file) {
+			const cursor = activeView.editor.getCursor();
+      const data = this.app.metadataCache.getFileCache(activeView.file) || {};
+			const activeFile = activeView.file;
+			const relativePath = activeFile.parent.path;
+			if (this.app.vault.adapter instanceof FileSystemAdapter) {
+      	var absolutePath = path.join(this.app.vault.adapter.getBasePath(), relativePath);
+			} else {
+      	var absolutePath = path.join(this.app.vault.getResourcePath(activeFile), relativePath);
+			}
+			console.log(absolutePath);
 
-		this.registerInterval(window.setInterval(() => console.log('setInterval'), 5 * 60 * 1000));
+			var toc = "";
+			var c = 1;
+			const arr = this.getMarkdownFileList(absolutePath);
+			arr.forEach(v => {
+				toc += c + ". " + "[[" + v.name + "]]" + "\n";
+				c++;
+			});
+
+      if (toc) {
+        activeView.editor.replaceRange(toc, cursor);
+      }
+    }
+  };
+
+	private getMarkdownFileList(dirPath:string) {
+			let fileList = readdirSync(dirPath, {
+					withFileTypes: true, 
+			})
+			.filter(dirent => dirent.isFile())
+			.filter(dirent => dirent.name.endsWith(".md"))
+			.map(dirent => {
+				return {
+					name: dirent.name,
+					ctime: statSync(path.join(dirPath, dirent.name)).ctime,
+					mtime: statSync(path.join(dirPath, dirent.name)).mtime,
+				}
+			});
+			// ソートして返却
+			// fileList.sort((a, b) => b.mtime.getMilliseconds() - a.mtime.getMilliseconds());
+			fileList.sort((a, b) => b.ctime.getTime() - a.ctime.getTime());
+
+			return fileList;
 	}
 
 	onunload() {
@@ -95,7 +145,7 @@ class SampleSettingTab extends PluginSettingTab {
 
 		containerEl.empty();
 
-		containerEl.createEl('h2', {text: 'Settings for my awesome plugin.'});
+		containerEl.createEl('h2', {text: 'Table of Contents Note - Settings'});
 
 		new Setting(containerEl)
 			.setName('Setting #1')
