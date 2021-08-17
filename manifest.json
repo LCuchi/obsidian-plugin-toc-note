@@ -1,9 +1,9 @@
 {
 	"id": "obsidian-plugin-toc-note",
-	"name": "Table of Contents note",
+	"name": "目次ノートを作成",
 	"author": "LCuchi",
 	"authorUrl": "https://obsidian.md/about",
-	"description": "This is a sample plugin for Obsidian. This plugin demonstrates some of the capabilities of the Obsidian API.",
+	"description": "Create a table of contents for files of current directory.",
 	"isDesktopOnly": false,
 	"minAppVersion": "0.10.12",
 	"version": "0.9.1"

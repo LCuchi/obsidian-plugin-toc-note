@@ -6,54 +6,36 @@ import * as path from 'path';
 type GetSettings = (
   data: CachedMetadata,
   cursor: CodeMirror.Position
-) => MyPluginSettings;
-interface MyPluginSettings {
+) => TocNotePluginSettings;
+interface TocNotePluginSettings {
   mySetting: string;
 }
 
-const DEFAULT_SETTINGS: MyPluginSettings = {
+const DEFAULT_SETTINGS: TocNotePluginSettings = {
   mySetting: 'default'
 }
 
-export default class MyPlugin extends Plugin {
-  public settings: MyPluginSettings = DEFAULT_SETTINGS;
+export default class TocNotePlugin extends Plugin {
+  public settings: TocNotePluginSettings = DEFAULT_SETTINGS;
 
   async onload() {
     console.log('loading plugin');
 
     await this.loadSettings();
 
-    this.addCommand({
-      id: 'open-sample-modal',
-      name: 'Open Sample Modal',
-      // callback: () => {
-      // 	console.log('Simple Callback');
-      // },
-      checkCallback: (checking: boolean) => {
-        let leaf = this.app.workspace.activeLeaf;
-        if (leaf) {
-          if (!checking) {
-            new SampleModal(this.app).open();
-          }
-          return true;
-        }
-        return false;
-      }
-    });
-
     // コマンド
     this.addCommand({
       id: 'add-toc-notes',
-      name: 'Add Sample TOC Notes',
+      name: 'Create table of contents page',
       callback: this.createTocForActiveFile(),
     });
 
     // 設定内容
-    this.addSettingTab(new SampleSettingTab(this.app, this));
+    // this.addSettingTab(new TocNotePluginSettingTab(this.app, this));
   }
 
   private createTocForActiveFile = (
-    settings: MyPluginSettings | GetSettings = this.settings
+    settings: TocNotePluginSettings | GetSettings = this.settings
   ) => () => {
     const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
 
@@ -116,26 +98,10 @@ export default class MyPlugin extends Plugin {
   }
 }
 
-class SampleModal extends Modal {
-  constructor(app: App) {
-    super(app);
-  }
+class TocNotePluginSettingTab extends PluginSettingTab {
+  plugin: TocNotePlugin;
 
-  onOpen() {
-    let { contentEl } = this;
-    contentEl.setText('Woah!');
-  }
-
-  onClose() {
-    let { contentEl } = this;
-    contentEl.empty();
-  }
-}
-
-class SampleSettingTab extends PluginSettingTab {
-  plugin: MyPlugin;
-
-  constructor(app: App, plugin: MyPlugin) {
+  constructor(app: App, plugin: TocNotePlugin) {
     super(app, plugin);
     this.plugin = plugin;
   }
@@ -145,7 +111,7 @@ class SampleSettingTab extends PluginSettingTab {
 
     containerEl.empty();
 
-    containerEl.createEl('h2', { text: 'Table of Contents Note - Settings' });
+    containerEl.createEl('h2', { text: '目次ノートを作成 - Settings' });
 
     new Setting(containerEl)
       .setName('Setting #1')
