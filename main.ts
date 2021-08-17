@@ -1,7 +1,7 @@
 import * as CodeMirror from 'codemirror';
-import { App, MarkdownView, Modal, Plugin, PluginSettingTab, Setting, CachedMetadata, FileSystemAdapter } from 'obsidian';
-import { readdirSync, statSync } from "fs";
-import * as path from 'path';
+import * as Path from 'path';
+import { App, MarkdownView, Plugin, PluginSettingTab, Setting, CachedMetadata, FileSystemAdapter, TFile } from 'obsidian';
+import { readdirSync, statSync } from 'fs';
 
 type GetSettings = (
   data: CachedMetadata,
@@ -40,30 +40,28 @@ export default class TocNotePlugin extends Plugin {
     const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
 
     if (activeView && activeView.file) {
-      const cursor = activeView.editor.getCursor();
-      const data = this.app.metadataCache.getFileCache(activeView.file) || {};
       const activeFile = activeView.file;
-      const relativePath = activeFile.parent.path;
-      if (this.app.vault.adapter instanceof FileSystemAdapter) {
-        var absolutePath = path.join(this.app.vault.adapter.getBasePath(), relativePath);
-      } else {
-        var absolutePath = path.join(this.app.vault.getResourcePath(activeFile), relativePath);
-      }
-      console.log(absolutePath);
+      const targetPath = this.getTargetPath(activeFile.parent.path, activeFile);
+      const fileList = this.getMarkdownFileList(targetPath);
 
-      var toc = "";
-      var c = 1;
-      const arr = this.getMarkdownFileList(absolutePath);
-      arr.forEach(v => {
-        toc += c + ". " + "[[" + v.name + "]]" + "\n";
-        c++;
+      let toc = "";
+      fileList.forEach((file, index) => {
+        toc += `${++index}. [[${file.name}]]` + '\n';
       });
 
-      if (toc) {
-        activeView.editor.replaceRange(toc, cursor);
-      }
+      const cursor = activeView.editor.getCursor();
+      activeView.editor.replaceRange(toc, cursor);
     }
   };
+
+  private getTargetPath(path: string, file: TFile): string {
+    const adapter = this.app.vault.adapter;
+    if (adapter instanceof FileSystemAdapter) {
+      return Path.join(adapter.getBasePath(), path);
+    } else {
+      return Path.join(this.app.vault.getResourcePath(file), path);
+    }
+  }
 
   private getMarkdownFileList(dirPath: string) {
     let fileList = readdirSync(dirPath, {
@@ -74,11 +72,12 @@ export default class TocNotePlugin extends Plugin {
       .map(dirent => {
         return {
           name: dirent.name,
-          ctime: statSync(path.join(dirPath, dirent.name)).ctime,
-          mtime: statSync(path.join(dirPath, dirent.name)).mtime,
+          ctime: statSync(Path.join(dirPath, dirent.name)).ctime,
+          mtime: statSync(Path.join(dirPath, dirent.name)).mtime,
         }
       });
-    // ソートして返却
+
+    // TODO: ソート順を設定可能にする
     // fileList.sort((a, b) => b.mtime.getMilliseconds() - a.mtime.getMilliseconds());
     fileList.sort((a, b) => b.ctime.getTime() - a.ctime.getTime());
 
