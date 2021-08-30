@@ -1,112 +1,127 @@
-import { App, Modal, Notice, Plugin, PluginSettingTab, Setting } from 'obsidian';
+import * as CodeMirror from 'codemirror';
+import * as Path from 'path';
+import { App, MarkdownView, Plugin, PluginSettingTab, Setting, CachedMetadata, FileSystemAdapter, TFile } from 'obsidian';
+import { readdirSync, statSync } from 'fs';
 
-interface MyPluginSettings {
-	mySetting: string;
+type GetSettings = (
+  data: CachedMetadata,
+  cursor: CodeMirror.Position
+) => TocNotePluginSettings;
+interface TocNotePluginSettings {
+  mySetting: string;
 }
 
-const DEFAULT_SETTINGS: MyPluginSettings = {
-	mySetting: 'default'
+const DEFAULT_SETTINGS: TocNotePluginSettings = {
+  mySetting: 'default'
 }
 
-export default class MyPlugin extends Plugin {
-	settings: MyPluginSettings;
+export default class TocNotePlugin extends Plugin {
+  public settings: TocNotePluginSettings = DEFAULT_SETTINGS;
 
-	async onload() {
-		console.log('loading plugin');
+  async onload() {
+    console.log('loading plugin');
 
-		await this.loadSettings();
+    await this.loadSettings();
 
-		this.addRibbonIcon('dice', 'Sample Plugin', () => {
-			new Notice('This is a notice!');
-		});
+    // コマンド
+    this.addCommand({
+      id: 'add-toc-notes',
+      name: 'Create table of contents page',
+      callback: this.createTocForActiveFile(),
+    });
 
-		this.addStatusBarItem().setText('Status Bar Text');
+    // 設定内容
+    // this.addSettingTab(new TocNotePluginSettingTab(this.app, this));
+  }
 
-		this.addCommand({
-			id: 'open-sample-modal',
-			name: 'Open Sample Modal',
-			// callback: () => {
-			// 	console.log('Simple Callback');
-			// },
-			checkCallback: (checking: boolean) => {
-				let leaf = this.app.workspace.activeLeaf;
-				if (leaf) {
-					if (!checking) {
-						new SampleModal(this.app).open();
-					}
-					return true;
-				}
-				return false;
-			}
-		});
+  private createTocForActiveFile = (
+    settings: TocNotePluginSettings | GetSettings = this.settings
+  ) => () => {
+    const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
 
-		this.addSettingTab(new SampleSettingTab(this.app, this));
+    if (activeView && activeView.file) {
+      const activeFile = activeView.file;
+      const targetPath = this.getTargetPath(activeFile.parent.path, activeFile);
+      const fileList = this.getMarkdownFileList(targetPath);
 
-		this.registerCodeMirror((cm: CodeMirror.Editor) => {
-			console.log('codemirror', cm);
-		});
+      let toc = "";
+      fileList.forEach((file, index) => {
+        toc += `${++index}. [[${file.name}]]` + '\n';
+      });
 
-		this.registerDomEvent(document, 'click', (evt: MouseEvent) => {
-			console.log('click', evt);
-		});
+      const cursor = activeView.editor.getCursor();
+      activeView.editor.replaceRange(toc, cursor);
+    }
+  };
 
-		this.registerInterval(window.setInterval(() => console.log('setInterval'), 5 * 60 * 1000));
-	}
+  private getTargetPath(path: string, file: TFile): string {
+    const adapter = this.app.vault.adapter;
+    if (adapter instanceof FileSystemAdapter) {
+      return Path.join(adapter.getBasePath(), path);
+    } else {
+      return Path.join(this.app.vault.getResourcePath(file), path);
+    }
+  }
 
-	onunload() {
-		console.log('unloading plugin');
-	}
+  private getMarkdownFileList(dirPath: string) {
+    let fileList = readdirSync(dirPath, {
+      withFileTypes: true,
+    })
+      .filter(dirent => dirent.isFile())
+      .filter(dirent => dirent.name.endsWith(".md"))
+      .map(dirent => {
+        return {
+          name: dirent.name,
+          ctime: statSync(Path.join(dirPath, dirent.name)).ctime,
+          mtime: statSync(Path.join(dirPath, dirent.name)).mtime,
+        }
+      });
 
-	async loadSettings() {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
-	}
+    // TODO: ソート順を設定可能にする
+    // fileList.sort((a, b) => b.mtime.getMilliseconds() - a.mtime.getMilliseconds());
+    fileList.sort((a, b) => b.ctime.getTime() - a.ctime.getTime());
 
-	async saveSettings() {
-		await this.saveData(this.settings);
-	}
+    return fileList;
+  }
+
+  onunload() {
+    console.log('unloading plugin');
+  }
+
+  async loadSettings() {
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+  }
+
+  async saveSettings() {
+    await this.saveData(this.settings);
+  }
 }
 
-class SampleModal extends Modal {
-	constructor(app: App) {
-		super(app);
-	}
+class TocNotePluginSettingTab extends PluginSettingTab {
+  plugin: TocNotePlugin;
 
-	onOpen() {
-		let {contentEl} = this;
-		contentEl.setText('Woah!');
-	}
+  constructor(app: App, plugin: TocNotePlugin) {
+    super(app, plugin);
+    this.plugin = plugin;
+  }
 
-	onClose() {
-		let {contentEl} = this;
-		contentEl.empty();
-	}
-}
+  display(): void {
+    let { containerEl } = this;
 
-class SampleSettingTab extends PluginSettingTab {
-	plugin: MyPlugin;
+    containerEl.empty();
 
-	constructor(app: App, plugin: MyPlugin) {
-		super(app, plugin);
-		this.plugin = plugin;
-	}
+    containerEl.createEl('h2', { text: '目次ノートを作成 - Settings' });
 
-	display(): void {
-		let {containerEl} = this;
-
-		containerEl.empty();
-
-		containerEl.createEl('h2', {text: 'Settings for my awesome plugin.'});
-
-		new Setting(containerEl)
-			.setName('Setting #1')
-			.setDesc('It\'s a secret')
-			.addText(text => text
-				.setPlaceholder('Enter your secret')
-				.setValue('')
-				.onChange(async (value) => {
-					console.log('Secret: ' + value);
-					this.plugin.settings.mySetting = value;
-					await this.plugin.saveSettings();
-				}));
-	}
+    new Setting(containerEl)
+      .setName('Setting #1')
+      .setDesc('It\'s a secret')
+      .addText(text => text
+        .setPlaceholder('Enter your secret')
+        .setValue('')
+        .onChange(async (value) => {
+          console.log('Secret: ' + value);
+          this.plugin.settings.mySetting = value;
+          await this.plugin.saveSettings();
+        }));
+  }
 }
